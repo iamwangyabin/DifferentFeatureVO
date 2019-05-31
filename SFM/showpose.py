@@ -4,119 +4,127 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 
-with open("fr1_LF/reconstruction.json","r", encoding="utf-8") as f:
-    cc = json.loads(f.read())
-
-data=[]
-name=[]
-for c in range(len(cc)):
-    for i in cc[c]["shots"]:
-        data.append(cc[c]["shots"][i]["translation"])
-
-def show(aa):
-    ax = plt.subplot(111, projection='3d')  # 创建一个三维的绘图工程
-    for i in range(len(aa)):
-        # plot point
-        ax.scatter(aa[i][0],aa[i][1],aa[i][2], c='y')        # plot line
-    ax.set_zlabel('Z')  # 坐标轴
-    ax.set_ylabel('Y')
-    ax.set_xlabel('X')
-    plt.show()
-
-show(data)
-
-
-def show(aa,name):
-    ax = plt.subplot(111, projection='3d')  # 创建一个三维的绘图工程
-    for i in range(len(aa)):
-        # plot point
-        ax.scatter(aa[i][0],aa[i][1],aa[i][2], c='y')
-        # # plot text
-        label = '%s' % (name[i])
-        ax.text(aa[i][0], aa[i][1], aa[i][2], label, color='red')
-    ax.set_zlabel('Z')  # 坐标轴
-    ax.set_ylabel('Y')
-    ax.set_xlabel('X')
-    plt.show()
-
-
-
-
 def getReconData(filename):
     with open(filename,"r", encoding="utf-8") as f:
         cc = json.loads(f.read())
     data={}
     for c in range(len(cc)):
         for i in cc[c]["shots"]:
-            data[i]=cc[c]["shots"][i]["translation"]
+            data[i]={'rotation':cc[c]["shots"][i]["rotation"], 'translation': cc[c]["shots"][i]["translation"]}
     data_name=sorted(data.keys())
     return data,data_name
 
-dataLF,nameLF=getReconData("fr1_LF/reconstruction.json")
-dataSIFT,nameSIFT=getReconData("fr1_sift/reconstruction.json")
+def optical_center(shot):
+    R = cv2.Rodrigues(np.array(shot['rotation'], dtype=float))[0]
+    t = shot['translation']
+    return -R.T.dot(t)
 
-def show(data,name):
+def makeRotationAxis(axis,angle):
+    c = np.cos(angle)
+    s = np.cos(angle)
+    t = 1 - c
+    x = axis[0]
+    y = axis[1]
+    z = axis[2]
+    tx = t*x
+    ty = t*y
+    th = np.array([
+        [tx * x + c, tx * y - s * z, tx * z + s * y, 0],
+        [tx * y + s * z, ty * y + c, ty * z - s * x, 0],
+        [tx * z - s * y, ty * z + s * x, t * z * z + c, 0],
+        [0, 0, 0, 1]
+    ])
+    return th
+
+def applyMatrix4(v,matrix):
+    x = matrix[0][0] * v[0] + matrix[0][1] * v[1] + matrix[0][2] * v[2] +matrix[0][3]
+    y = matrix[1][0] * v[0] + matrix[1][1] * v[1] + matrix[1][2] * v[2] +matrix[1][3]
+    z = matrix[2][0] * v[0] + matrix[2][1] * v[1] + matrix[2][2] * v[2] +matrix[2][3]
+    return np.array([x,y,z])
+
+def rotate(vector, angleaxis):
+    v = np.array([vector[2], vector[1], vector[1]])
+    axis = np.array([angleaxis[0], angleaxis[1], angleaxis[2]])
+    angle = np.linalg.norm(axis)
+    print(angle)
+    matrix = makeRotationAxis(axis,angle)
+    n_v = applyMatrix4(v,matrix)
+    return n_v
+
+def opticalCenter(shot):
+    R = -np.array(shot['rotation'], dtype=float)
+    t = np.array(shot['translation'], dtype=float)
+    Rt = rotate(t, R)
+    Rt = -Rt
+    return Rt
+
+def getWorldPosion(data,name):
+    real_data={}
+    for i in name:
+        temp = opticalCenter(data[i])
+        real_data[i] = temp
+    return real_data
+
+rawdataLF,nameLF=getReconData("./fr1_nolocalBA/reconstruction.json")
+
+
+realdataLF = getWorldPosion(rawdataLF,nameLF)
+
+
+
+
+
+
+
+# shot=rawdataLF[nameLF[3]]
+# R=cv2.Rodrigues(np.array(shot['rotation'], dtype=float))[0]
+
+def getWorldPosion(data,name):
+    real_data={}
+    for i in name:
+        temp = optical_center(data[i])
+        real_data[i] = temp
+    return real_data
+
+realdataLF = getWorldPosion(rawdataLF,nameLF)
+
+# def getTSVData(filename):
+#     f = open(filename,'r')
+#     worldcoord={}
+#     i=0
+#     for line in f.readlines():
+#         if i==0:
+#             i+=1
+#             continue
+#         data=line.split()
+#         worldcoord[data[0]] = [float(data[1]), float(data[2]), float(data[3])]
+#         i+=1
+#     return worldcoord
+
+# worldcoord = getTSVData("./fr1/image_geocoords.tsv")
+
+
+
+
+def showSFMresult(data1,name):
     ax = plt.subplot(111, projection='3d')  # 创建一个三维的绘图工程
-    i=0
+    x = []
+    y = []
+    z = []
     for key in name:
-        if i==0:
-            pre_value=data[key]
-            i+=1
-            continue
-        value=data[key]
-        ax.scatter(value[0],value[1],value[2], c='y')
-        x=np.array([value[0],pre_value[0]])
-        y=np.array([value[1],pre_value[1]])
-        z=np.array([value[2],pre_value[2]])
-        pre_value = value
-        ax.plot(x,y,z,c='b')
-        i+=1
-        # # plot text
-        if i %10 == 0:
-            label = '%s' % (key.split('.')[0][-5:])
-            ax.text(value[0], value[1], value[2], label, color='red')
+        value=data1[key]
+        x.append( value[0] )
+        y.append( value[1] )
+        z.append( value[2] )
+    ax.plot(x,y,z)
     ax.set_zlabel('Z')  # 坐标轴
     ax.set_ylabel('Y')
     ax.set_xlabel('X')
     plt.show()
 
-
-show(data,name)
-
-show(dataSIFT,nameSIFT)
+showSFMresult(realdataLF,nameLF)
 
 
-
-def show(data1,data2,name):
-    ax = plt.subplot(111, projection='3d')  # 创建一个三维的绘图工程
-    i=0
-    for key in data1.keys():
-        # if i==0:
-        #     pre_value1=data1[key]
-        #     pre_value2=data2[key]
-        #     i+=1
-        #     continue
-        value=data[key]
-        ax.scatter(value[0],value[1],value[2], c='y')
-    for key in data2.keys():
-        value2=data2[key]
-        ax.scatter(value2[0],value2[1],value2[2], c='r')
-        # x=np.array([value[0],pre_value[0]])
-        # y=np.array([value[1],pre_value[1]])
-        # z=np.array([value[2],pre_value[2]])
-        # pre_value = value
-        # ax.plot(x,y,z,c='b')
-        i+=1
-        # # plot text
-        # if i %10 == 0:
-        #     label = '%s' % (key.split('.')[0][-5:])
-        #     ax.text(value[0], value[1], value[2], label, color='red')
-    ax.set_zlabel('Z')  # 坐标轴
-    ax.set_ylabel('Y')
-    ax.set_xlabel('X')
-    plt.show()
-
-show(data,dataSIFT,name)
 
 def showGroundtruth():
     f = open("./groundtruth.txt")
@@ -136,9 +144,7 @@ def showGroundtruth():
 
 showGroundtruth()
 
-
-
-def show(data1,data2,name):
+def show(data1,name):
     ax = plt.subplot(111, projection='3d')  # 创建一个三维的绘图工程
     x = []
     y = []
@@ -166,11 +172,8 @@ def show(data1,data2,name):
     ax.set_xlabel('X')
     plt.show()
 
-show(data,dataSIFT,name)
 
-dataLF,nameLF=getReconData("fr1/reconstruction.json")
-show(dataLF,dataSIFT,nameLF)
-
+show(dataLF,nameLF)
 
 ## name:list
 ##  从真实值找匹配值，并在找不到的地方放弃
@@ -202,7 +205,7 @@ def Change2Point(data,name):
     points=np.array(points)
     return points
 
-LFPoints=Change2Point(dataLF,new_name)
+LFPoints=Change2Point(realdataLF,new_name)
 GroundPoints=Change2Point(ground,new_name)
 
 import transformations as tf
@@ -241,3 +244,5 @@ def show(data1,data2):
 show(new_GroundPoints,LFPoints)
 
 show(new_LFPoints,GroundPoints)
+
+
