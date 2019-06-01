@@ -37,16 +37,18 @@ def makeRotationAxis(axis,angle):
     return th
 
 def applyMatrix4(v,matrix):
-    x = matrix[0][0] * v[0] + matrix[0][1] * v[1] + matrix[0][2] * v[2] +matrix[0][3]
-    y = matrix[1][0] * v[0] + matrix[1][1] * v[1] + matrix[1][2] * v[2] +matrix[1][3]
-    z = matrix[2][0] * v[0] + matrix[2][1] * v[1] + matrix[2][2] * v[2] +matrix[2][3]
+    d = 1/(matrix[3][0] * v[0]+  matrix[3][1] *v[1]+ matrix[3][2]*v[2] + matrix[3][3])
+    x = (matrix[0][0] * v[0] + matrix[0][1] * v[1] + matrix[0][2] * v[2] +matrix[0][3])*d
+    y = (matrix[1][0] * v[0] + matrix[1][1] * v[1] + matrix[1][2] * v[2] +matrix[1][3])*d
+    z = (matrix[2][0] * v[0] + matrix[2][1] * v[1] + matrix[2][2] * v[2] +matrix[2][3])*d
     return np.array([x,y,z])
 
 def rotate(vector, angleaxis):
-    v = np.array([vector[2], vector[1], vector[1]])
+    v = np.array([vector[0], vector[1], vector[2]])
     axis = np.array([angleaxis[0], angleaxis[1], angleaxis[2]])
     angle = np.linalg.norm(axis)
-    print(angle)
+    axis = axis / np.linalg.norm(axis)
+    # print(angle)
     matrix = makeRotationAxis(axis,angle)
     n_v = applyMatrix4(v,matrix)
     return n_v
@@ -65,19 +67,10 @@ def getWorldPosion(data,name):
         real_data[i] = temp
     return real_data
 
-rawdataLF,nameLF=getReconData("./fr1_nolocalBA/reconstruction.json")
+rawdataLF,nameLF=getReconData("./pano/reconstruction.json")
 
 
 realdataLF = getWorldPosion(rawdataLF,nameLF)
-
-
-
-
-
-
-
-# shot=rawdataLF[nameLF[3]]
-# R=cv2.Rodrigues(np.array(shot['rotation'], dtype=float))[0]
 
 def getWorldPosion(data,name):
     real_data={}
@@ -104,8 +97,6 @@ realdataLF = getWorldPosion(rawdataLF,nameLF)
 # worldcoord = getTSVData("./fr1/image_geocoords.tsv")
 
 
-
-
 def showSFMresult(data1,name):
     ax = plt.subplot(111, projection='3d')  # 创建一个三维的绘图工程
     x = []
@@ -122,9 +113,21 @@ def showSFMresult(data1,name):
     ax.set_xlabel('X')
     plt.show()
 
+
 showSFMresult(realdataLF,nameLF)
 
 
+def show(aa,name):
+    ax = plt.subplot(111, projection='3d')  # 创建一个三维的绘图工程
+    for i in name:
+        value = aa[i]
+        ax.scatter(value[0], value[1], value[2], c='y')
+    ax.set_zlabel('Z')  # 坐标轴
+    ax.set_ylabel('Y')
+    ax.set_xlabel('X')
+    plt.show()
+
+show(realdataLF,nameLF)
 
 def showGroundtruth():
     f = open("./groundtruth.txt")
@@ -150,22 +153,22 @@ def show(data1,name):
     y = []
     z = []
     for key in name:
-        value=data1[key]
+        value=data1[key]['translation']
         x.append( value[0] )
         y.append( value[1] )
         z.append( value[2] )
     ax.plot(x,y,z)
-    f = open("./groundtruth.txt")
-    x = []
-    y = []
-    z = []
-    for line in f:
-        if line[0] == '#':
-            continue
-        data = line.split()
-        x.append( float(data[1] ) )
-        y.append( float(data[2] ) )
-        z.append( float(data[3] ) )
+    # f = open("./groundtruth.txt")
+    # x = []
+    # y = []
+    # z = []
+    # for line in f:
+    #     if line[0] == '#':
+    #         continue
+    #     data = line.split()
+    #     x.append( float(data[1] ) )
+    #     y.append( float(data[2] ) )
+    #     z.append( float(data[3] ) )
     ax.plot(x,y,z)
     ax.set_zlabel('Z')  # 坐标轴
     ax.set_ylabel('Y')
@@ -173,7 +176,7 @@ def show(data1,name):
     plt.show()
 
 
-show(dataLF,nameLF)
+show(realdataLF,nameLF)
 
 ## name:list
 ##  从真实值找匹配值，并在找不到的地方放弃
